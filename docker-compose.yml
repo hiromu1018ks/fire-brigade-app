@@ -1,0 +1,31 @@
+# Docker Composeのバージョンを指定。3.8は比較的新しいバージョンで多くの機能をサポート
+version: '3.8'
+
+# サービス(コンテナ)の定義
+services:
+  # PostgresSQLデータベースサービスの設定
+  postgres:
+    # 使用するDockerイメージとバージョンを指定
+    image: postgres:15
+    # コンテナに付ける名前を指定
+    container_name: fire-brigade-db
+    # コンテナが停止した場合、自動的に再起動する設定
+    restart: always
+    # データベースの環境変数を設定
+    environment:
+      POSTGRES_DB: fire_brigade        # データベース名
+      POSTGRES_USER: fire_brigade_user # データベースユーザー名
+      POSTGRES_PASSWORD: password123   # データベースパスワード
+    # ホストとコンテナのポートマッピング
+    # ホストの5432ポートをコンテナの5432ポートに接続
+    ports:
+      - "5432:5432"
+    # データの永続化設定
+    # postgres_dataボリュームをコンテナの/var/lib/postgresql/dataにマウント
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+# 永続化のためのボリューム定義
+# コンテナが削除されてもデータが保持される
+volumes:
+  postgres_data:
