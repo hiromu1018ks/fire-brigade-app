@@ -17,9 +17,9 @@ services:
       POSTGRES_USER: fire_brigade_user # データベースユーザー名
       POSTGRES_PASSWORD: password123   # データベースパスワード
     # ホストとコンテナのポートマッピング
-    # ホストの5432ポートをコンテナの5432ポートに接続
+    # ホストの5433ポートをコンテナの5432ポートに接続
     ports:
-      - "5432:5432"
+      - "5433:5432"
     # データの永続化設定
     # postgres_dataボリュームをコンテナの/var/lib/postgresql/dataにマウント
     volumes:
