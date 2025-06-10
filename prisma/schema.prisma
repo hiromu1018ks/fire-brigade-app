@@ -1,0 +1,144 @@
+// Prismaスキーマファイル
+// Prismaの詳細については以下のドキュメントを参照: https://pris.ly/d/prisma-schema
+// クエリの高速化やサーバーレス・エッジ機能での簡単なスケーリングをお探しの場合は
+// Prisma Accelerateをお試しください: https://pris.ly/cli/accelerate-init
+
+// Prismaクライアントのコード生成設定
+generator client {
+  provider = "prisma-client-js" // JavaScript/TypeScript用のクライアントを生成
+}
+
+// データベース接続設定
+datasource db {
+  provider = "postgresql" // PostgreSQLデータベースを使用
+  url      = env("DATABASE_URL") // 環境変数からデータベース接続URLを取得
+}
+
+// 消防団員のユーザー情報を管理するメインテーブル
+// 各消防団員の基本情報と認証情報を一元管理する
+model User {
+  id          String   @id @default(cuid()) // プライマリキー: 一意のユーザーID（自動生成される短いランダム文字列）
+  email       String   @unique // ログイン用メールアドレス（システム全体で重複不可）
+  name        String // 消防団員の氏名（必須項目）
+  phoneNumber String? // 緊急連絡用電話番号（任意項目、nullの場合もある）
+  role        Role     @default(MEMBER) // ユーザーの役職（列挙型、デフォルトは一般団員）
+  groupId     String? // 所属班のID（班に未所属の場合はnull）
+  joinDate    DateTime @default(now()) // 消防団入団日（レコード作成時の日時が自動設定）
+  isActive    Boolean  @default(true) // アカウントのアクティブ状態（false=退団済み、true=現役）
+  createdAt   DateTime @default(now()) // データベースレコードの作成日時（自動設定）
+  updatedAt   DateTime @updatedAt // データベースレコードの最終更新日時（更新時に自動設定）
+
+  // Auth.js（認証ライブラリ）で使用する追加フィールド
+  emailVerified DateTime? // メールアドレス認証完了日時（未認証の場合はnull）
+  image         String? // ユーザーのプロフィール画像URL（任意）
+
+  // 他のテーブルとのリレーション（関連付け）設定
+  group Group? @relation(fields: [groupId], references: [id]) // 所属班との多対一リレーション（一人のユーザーは一つの班に所属）
+
+  // Auth.js用のリレーション（認証システムで必要）
+  accounts Account[] // 外部プロバイダー（Google、GitHubなど）のアカウント情報（一対多）
+  sessions Session[] // ログインセッション情報（一対多、複数デバイスでのログインを管理）
+
+  // 将来的に追加予定の機能用コメント（現在は未実装）
+  // emergencyResponses EmergencyResponse[] // 出動対応記録
+  // scheduleAttendances ScheduleAttendance[] // スケジュール出席記録
+
+  @@map("users") // データベース内でのテーブル名を指定（Prismaのモデル名とは異なる名前を使用可能）
+}
+
+// Auth.js認証システム用のアカウント情報テーブル
+// 外部プロバイダー（Google、GitHub、Facebook等）でのログイン情報を管理
+model Account {
+  id                String  @id @default(cuid()) // プライマリキー: アカウントの一意ID
+  userId            String  @map("user_id") // 関連するユーザーのID（外部キー）
+  type              String // アカウントタイプ（oauth、email等）
+  provider          String // 認証プロバイダー名（google、github等）
+  providerAccountId String  @map("provider_account_id") // プロバイダー側のユーザーID
+  refresh_token     String? @db.Text // トークン更新用のリフレッシュトークン（長い文字列のためText型）
+  access_token      String? @db.Text // API アクセス用のトークン（長い文字列のためText型）
+  expires_at        Int? // アクセストークンの有効期限（UNIX タイムスタンプ）
+  token_type        String? // トークンの種類（通常は "Bearer"）
+  scope             String? // トークンで許可されている権限の範囲
+  id_token          String? @db.Text // OpenID Connect用のIDトークン（長い文字列のためText型）
+  session_state     String? // セッション状態管理用の文字列
+
+  // ユーザーテーブルとのリレーション
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade) // ユーザー削除時にアカウント情報も削除
+
+  @@unique([provider, providerAccountId]) // プロバイダーとプロバイダーアカウントIDの組み合わせで一意制約
+  @@map("accounts") // データベーステーブル名
+}
+
+// ログインセッション管理テーブル
+// ユーザーのログイン状態を追跡し、セキュリティを確保
+model Session {
+  id           String   @id @default(cuid()) // プライマリキー: セッションの一意ID
+  sessionToken String   @unique @map("session_token") // セッション識別用のトークン（ブラウザのクッキーに保存）
+  userId       String   @map("user_id") // セッションの所有者であるユーザーのID
+  expires      DateTime // セッションの有効期限
+
+  // ユーザーテーブルとのリレーション
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade) // ユーザー削除時にセッション情報も削除
+
+  @@map("sessions") // データベーステーブル名
+}
+
+// メール認証用トークン管理テーブル
+// パスワードリセットやメール認証で使用する一時的なトークンを管理
+model VerificationToken {
+  identifier String // トークンの識別子（通常はメールアドレス）
+  token      String   @unique // 認証用のランダムトークン（一意）
+  expires    DateTime // トークンの有効期限
+
+  @@unique([identifier, token]) // 識別子とトークンの組み合わせで一意制約
+  @@map("verificationtokens") // データベーステーブル名
+}
+
+// 消防団の班（グループ）情報管理テーブル
+// 消防団内の組織構造を管理し、団員を班単位でグループ化
+model Group {
+  id          String   @id @default(cuid()) // プライマリキー: 班の一意ID
+  name        String   @unique // 班名（例：「A分団A班」「第1分団第2班」）※重複不可
+  description String? // 班の詳細説明や特記事項（任意項目）
+  isActive    Boolean  @default(true) // 班のアクティブ状態（false=廃止済み班、true=現役班）
+  createdAt   DateTime @default(now()) // レコード作成日時（自動設定）
+  updatedAt   DateTime @updatedAt // レコード最終更新日時（更新時に自動設定）
+
+  // 他のテーブルとのリレーション
+  members User[] // この班に所属する団員リスト（一対多リレーション）
+  areas   Area[] // この班が担当する地域リスト（一対多リレーション）
+
+  // 将来的に追加予定の機能用コメント（現在は未実装）
+  // emergencies Emergency[] // この班が対応する緊急出動記録
+
+  @@map("groups") // データベーステーブル名
+}
+
+// 消防団の担当地域情報管理テーブル
+// 各班が担当する地理的エリアを定義し、出動時の責任範囲を明確化
+model Area {
+  id          String   @id @default(cuid()) // プライマリキー: 地域の一意ID
+  name        String // 地域名（例：「A地区」「○○町1丁目」「△△工業団地」）
+  description String? // 地域の詳細説明（地理的特徴、注意事項等）
+  groupId     String // この地域を担当する班のID（外部キー、必須）
+  isActive    Boolean  @default(true) // 地域のアクティブ状態（false=管轄外、true=現役管轄）
+  createdAt   DateTime @default(now()) // レコード作成日時（自動設定）
+  updatedAt   DateTime @updatedAt // レコード最終更新日時（更新時に自動設定）
+
+  // 他のテーブルとのリレーション
+  group Group @relation(fields: [groupId], references: [id]) // 担当班との多対一リレーション
+
+  // 将来的に追加予定の機能用コメント（現在は未実装）
+  // emergencies Emergency[] // この地域で発生した緊急事態記録
+
+  @@map("areas") // データベーステーブル名
+}
+
+// ユーザーの役職を定義する列挙型
+// 消防団内の階級や権限レベルを管理
+enum Role {
+  ADMIN // 最高管理者権限（分団長、副分団長等）- システム全体の管理が可能
+  LEADER // 班長権限 - 所属班の管理が可能
+  OFFICER // 幹部権限（副班長、部長等）- 限定的な管理機能が利用可能
+  MEMBER // 一般団員権限 - 基本機能のみ利用可能
+}
