@@ -40,8 +40,8 @@ model User {
   sessions Session[] // ログインセッション情報（一対多、複数デバイスでのログインを管理）
 
   // 将来的に追加予定の機能用コメント（現在は未実装）
-  // emergencyResponses EmergencyResponse[] // 出動対応記録
   // scheduleAttendances ScheduleAttendance[] // スケジュール出席記録
+  emergencyResponse EmergencyResponse[]
 
   @@map("users") // データベース内でのテーブル名を指定（Prismaのモデル名とは異なる名前を使用可能）
 }
@@ -109,7 +109,7 @@ model Group {
   areas   Area[] // この班が担当する地域リスト（一対多リレーション）
 
   // 将来的に追加予定の機能用コメント（現在は未実装）
-  // emergencies Emergency[] // この班が対応する緊急出動記録
+  emergencies Emergency[]
 
   @@map("groups") // データベーステーブル名
 }
@@ -130,8 +130,69 @@ model Area {
 
   // 将来的に追加予定の機能用コメント（現在は未実装）
   // emergencies Emergency[] // この地域で発生した緊急事態記録
+  emergencies Emergency[]
 
   @@map("areas") // データベーステーブル名
+}
+
+model Emergency {
+  id            String  @id @default(cuid()) // 一意なID
+  title         String // 出動名称（例: "住宅火災"）
+  description   String? // 詳細説明
+  location      String // 出動場所
+  latitude      Float? // 緯度（地図連携用）
+  longitude     Float? // 経度（地図連携用）
+  emergencyType String // 災害種別（fire, rescue, medical等）
+  severity      String // 緊急度（high, medium, low）
+  status        String  @default("active") // ステータス（active, completed, cancelled）
+
+  // 班別通知のための地域判定
+  targetAreaId String? // 対象地域のID
+  targetArea   Area?   @relation(fields: [targetAreaId], references: [id])
+
+  // 対象班（自動判定または手動指定）
+  targetGroupId String? // 対象班のID
+  targetGroup   Group?  @relation(fields: [targetGroupId], references: [id])
+
+  createdAt DateTime @default(now()) // 作成日時
+  updatedAt DateTime @updatedAt // 更新日時
+
+  // リレーション
+  responses EmergencyResponse[] // 出動対応記録
+
+  @@map("emergencies") // テーブル名をemergenciesに設定
+}
+
+// 出動対応記録テーブル（どの団員がどのように対応したか）
+model EmergencyResponse {
+  id String @id @default(cuid()) // 一意なID
+
+  // 関連する出動情報
+  emergencyId String // 出動情報のID
+  emergency   Emergency @relation(fields: [emergencyId], references: [id], onDelete: Cascade)
+
+  // 対応した団員
+  userId String // 団員のID
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 参集方法
+  responseType String // 参集方法（"station" = 詰所参集, "direct" = 現場直行）
+
+  // 到着予定・実績
+  estimatedArrival DateTime? // 到着予定時刻
+  actualArrival    DateTime? // 実際の到着時刻
+
+  // ステータス
+  status String @default("dispatched") // ステータス（dispatched, enroute, arrived, completed）
+
+  // その他
+  notes     String? // 備考
+  createdAt DateTime @default(now()) // 登録日時
+  updatedAt DateTime @updatedAt // 更新日時
+
+  // 複合ユニーク制約（同じ出動に同じ団員は1つの記録のみ）
+  @@unique([emergencyId, userId])
+  @@map("emergency_responses") // テーブル名を設定
 }
 
 // ユーザーの役職を定義する列挙型
