@@ -180,6 +180,13 @@ const getEmergencySchema = z.object({
   offset: z.string().transform(Number).optional(),
 });
 
+// データベースの検索条件の型を定義します
+// Prismaのwhere句で使用する条件の型を明示的に定義することで、型安全性を確保します
+type EmergencyWhere = {
+  status?: "active" | "completed" | "cancelled";
+  targetGroupId?: string;
+};
+
 // GETリクエストを処理する関数
 // クライアントからの緊急出動情報の取得要求を受け付けます
 export async function GET(request: NextRequest) {
@@ -203,7 +210,7 @@ export async function GET(request: NextRequest) {
 
     // データベースの検索条件を格納するオブジェクトを作成します
     // 初期状態では空のオブジェクトです
-    const where: any = {};
+    const where: EmergencyWhere = {};
 
     // 状態（status）が指定されている場合
     // 検索条件に状態を追加します
